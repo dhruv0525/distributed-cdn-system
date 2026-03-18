@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  traffic-manager:
+    build: ./services/traffic-manager
+    ports:
+      - "8000:8000"
+
+  edge-a:
+    build: ./services/edge-node-a
+    ports:
+      - "8001:8000"
+
+  edge-b:
+    build: ./services/edge-node-b
+    ports:
+      - "8002:8000"
+
+  edge-c:
+    build: ./services/edge-node-c
+    ports:
+      - "8003:8000"
+
+  origin:
+    build: ./services/origin-server
+    ports:
+      - "8004:8000"
+
+  registry:
+    build: ./services/service-registry
+    ports:
+      - "8005:8000"
+
+  purge:
+    build: ./services/purge-service
+    ports:
+      - "8006:8000"
+
+  monitoring:
+    build: ./services/monitoring
+    ports:
+      - "8007:8000"
