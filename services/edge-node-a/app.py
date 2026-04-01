@@ -20,6 +20,14 @@ CACHE_TTL         = int(os.getenv("CACHE_TTL",        "60"))
 CACHE_MAX_SIZE    = int(os.getenv("CACHE_MAX_SIZE",    "100"))
 SIMULATED_LATENCY = float(os.getenv("SIMULATED_LATENCY", "0.1"))
 
+# ─────────────────────────────────────────────
+# LOAD SHEDDING & FAILURE
+# ─────────────────────────────────────────────
+active_connections = 0
+MAX_CONNECTIONS = 2
+active_connections_lock = threading.Lock()
+FAILURE_MODE = False
+
 
 # ─────────────────────────────────────────────
 # LRU CACHE WITH TTL
@@ -116,51 +124,83 @@ def on_startup():
 # ─────────────────────────────────────────────
 @app.get("/fetch")
 def fetch_file(file: str, x_request_id: str = Header(None)):
-    print(f"[{x_request_id}] FETCH → file='{file}'")
+    global active_connections
+    global FAILURE_MODE
 
-    cached = cache.get(file)
-    if cached is not None:
-        print(f"[{x_request_id}] Cache HIT")
-        time.sleep(SIMULATED_LATENCY)
-        return {
-            "status":     "HIT",
-            "file":       file,
-            "node":       NODE_ID,
-            "request_id": x_request_id,
-            "data":       cached,
-        }
+    if FAILURE_MODE:
+        return {"status": "ERROR", "file": file, "message": "Node failure simulated"}
 
-    print(f"[{x_request_id}] Cache MISS → fetching from origin")
+    with active_connections_lock:
+        if active_connections >= MAX_CONNECTIONS:
+            return {"status": "BUSY", "file": file, "message": "Edge node overloaded"}
+        active_connections += 1
+
     try:
-        response = requests.get(
-            f"{ORIGIN_URL}/get-file/{file}",
-            headers={"x-request-id": x_request_id or ""},
-            timeout=10,
-        )
-        response.raise_for_status()
-        data = response.json()
-        cache.set(file, data)
-        print(f"[{x_request_id}] Stored '{file}' in cache")
-        return {
-            "status":     "MISS",
-            "file":       file,
-            "node":       NODE_ID,
-            "request_id": x_request_id,
-            "data":       data,
-        }
-    except requests.exceptions.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"Origin error: {str(e)}")
-    except Exception as e:
-        raise HTTPException(status_code=503, detail="Origin unreachable")
+        print(f"[{x_request_id}] FETCH → file='{file}'")
 
+        cached = cache.get(file)
+        if cached is not None:
+            print(f"[{x_request_id}] Cache HIT")
+            time.sleep(SIMULATED_LATENCY)
+            return {
+                "status":     "HIT",
+                "file":       file,
+                "node":       NODE_ID,
+                "request_id": x_request_id,
+                "data":       cached,
+            }
+
+        print(f"[{x_request_id}] Cache MISS → fetching from origin")
+        try:
+            response = requests.get(
+                f"{ORIGIN_URL}/get-file/{file}",
+                headers={"x-request-id": x_request_id or ""},
+                timeout=10,
+            )
+            response.raise_for_status()
+            data = response.json()
+            cache.set(file, data)
+            print(f"[{x_request_id}] Stored '{file}' in cache")
+            return {
+                "status":     "MISS",
+                "file":       file,
+                "node":       NODE_ID,
+                "request_id": x_request_id,
+                "data":       data,
+            }
+        except requests.exceptions.HTTPError as e:
+            raise HTTPException(status_code=502, detail=f"Origin error: {str(e)}")
+        except Exception as e:
+            raise HTTPException(status_code=503, detail="Origin unreachable")
+    finally:
+        with active_connections_lock:
+            active_connections -= 1
+
+
+# ─────────────────────────────────────────────
+# FAILURE INJECTION
+# ─────────────────────────────────────────────
+@app.post("/fail")
+def fail_node():
+    global FAILURE_MODE
+    FAILURE_MODE = True
+    return {"status": "failure_mode_enabled", "node_id": NODE_ID}
+
+@app.post("/recover")
+def recover_node():
+    global FAILURE_MODE
+    FAILURE_MODE = False
+    return {"status": "failure_mode_disabled", "node_id": NODE_ID}
 
 @app.get("/health")
 def health():
     return {
-        "status": "healthy",
-        "node":   NODE_ID,
+        "status": "healthy" if not FAILURE_MODE else "unhealthy",
+        "node_id": NODE_ID,
         "region": NODE_REGION,
-        "cache":  cache.info(),
+        "active_connections": active_connections,
+        "max_connections": MAX_CONNECTIONS,
+        "cache":  cache.info()
     }
 
 

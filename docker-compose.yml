@@ -10,16 +10,31 @@ services:
     build: ./services/edge-node-a
     ports:
       - "8001:8000"
+    environment:
+      - NODE_ID=edge-a
+      - NODE_REGION=America
+      - NODE_URL=http://edge-a:8000
+      - REGISTRY_URL=http://registry:8000
 
   edge-b:
     build: ./services/edge-node-b
     ports:
       - "8002:8000"
+    environment:
+      - NODE_ID=edge-b
+      - NODE_REGION=Europe
+      - NODE_URL=http://edge-b:8000
+      - REGISTRY_URL=http://registry:8000
 
   edge-c:
     build: ./services/edge-node-c
     ports:
       - "8003:8000"
+    environment:
+      - NODE_ID=edge-c
+      - NODE_REGION=Asia
+      - NODE_URL=http://edge-c:8000
+      - REGISTRY_URL=http://registry:8000
 
   origin:
     build: ./services/origin-server
