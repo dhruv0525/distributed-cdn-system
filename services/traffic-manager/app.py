@@ -273,3 +273,8 @@ class _NodeBusy(Exception):
     def __init__(self, url: str):
         self.url = url
         super().__init__(f"Node {url} is BUSY")
+
+@app.get("/health")
+def health():
+    return {"status": "healthy", "service": "traffic-manager"}
+    

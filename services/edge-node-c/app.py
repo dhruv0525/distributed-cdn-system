@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Header
 import requests
-import time
 
 app = FastAPI()
 
@@ -9,6 +8,7 @@ cache = {}
 
 ORIGIN_URL = "http://origin:8000"
 
+
 # -------------------------
 # FETCH FILE (MAIN LOGIC)
 # -------------------------
@@ -16,9 +16,6 @@ ORIGIN_URL = "http://origin:8000"
 def fetch_file(file: str, x_request_id: str = Header(None)):
 
     print(f"[{x_request_id}] Request for file: {file}")
-
-    # Simulate load (optional)
-    # time.sleep(0.1)
 
     # 1. Check cache
     if file in cache:
@@ -33,8 +30,26 @@ def fetch_file(file: str, x_request_id: str = Header(None)):
     print(f"[{x_request_id}] Cache MISS → fetching from origin")
 
     try:
-        response = requests.get(f"{ORIGIN_URL}/get-file/{file}")
-        data = response.json()
+        # ✅ FIX 1: Correct endpoint + query param
+        response = requests.get(
+            f"{ORIGIN_URL}/get-file",
+            params={"filename": file},
+            headers={"X-Request-ID": x_request_id} if x_request_id else {}
+        )
+
+        # ❌ If origin returns error, don't cache it
+        if response.status_code != 200:
+            print(f"[{x_request_id}] Origin error: {response.status_code}")
+            return {
+                "status": "ERROR",
+                "message": "Origin returned error",
+                "code": response.status_code
+            }
+
+        # ✅ FIX 2: Correct response handling
+        data = {
+            "content": response.text
+        }
 
         # Store in cache
         cache[file] = data
@@ -45,7 +60,8 @@ def fetch_file(file: str, x_request_id: str = Header(None)):
             "data": data
         }
 
-    except:
+    except Exception as e:
+        print(f"[{x_request_id}] Exception: {e}")
         return {
             "status": "ERROR",
             "message": "Failed to fetch from origin"
