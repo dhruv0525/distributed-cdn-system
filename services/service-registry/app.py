@@ -44,8 +44,6 @@ def update_status():
     for node in nodes.values():
         if now - node["last_heartbeat"] > HEARTBEAT_TIMEOUT:
             node["status"] = "Down"
-        else:
-            node["status"] = "Healthy"
 
 
 # -------------------------------
@@ -80,11 +78,12 @@ def register_node(node: dict):
 
 @app.post("/heartbeat")
 def heartbeat(data: dict):
-    node_id = data["id"]
+    node_id = data.get("id")
+    status = data.get("status", "Healthy")
 
     if node_id in nodes:
         nodes[node_id]["last_heartbeat"] = time.time()
-        nodes[node_id]["status"] = "Healthy"
+        nodes[node_id]["status"] = status
         return {"message": "Heartbeat updated"}
 
     return {"error": "Node not found"}
