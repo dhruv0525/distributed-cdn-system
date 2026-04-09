@@ -1,23 +1,23 @@
 from fastapi import FastAPI, Header
 import requests
-import time
 import threading
+import time
+import os
 
 app = FastAPI()
 
-# Simple in-memory cache
+# -------------------------
+# CONFIG
+# -------------------------
+ORIGIN_URL = os.getenv("ORIGIN_URL", "http://origin:8000")
+REGISTRY_URL = os.getenv("REGISTRY_URL", "http://registry:8000")
+NODE_ID = os.getenv("NODE_ID", "edge-a")  # change via docker
+
+# -------------------------
+# CACHE
+# -------------------------
 cache = {}
-
-ORIGIN_URL = "http://origin:8000"
-REGISTRY_URL = "http://registry:8000"
-NODE_ID = "edge-c"
-
-# State variables
 is_failed = False
-active_requests = 0
-requests_lock = threading.Lock()
-MAX_CONCURRENT = 2
-
 
 # -------------------------
 # HEARTBEAT THREAD
@@ -25,24 +25,16 @@ MAX_CONCURRENT = 2
 def send_heartbeat():
     while True:
         try:
-            with requests_lock:
-                current_load = active_requests
-
-            if is_failed:
-                status = "Down"
-            elif current_load >= MAX_CONCURRENT:
-                status = "Busy"
-            else:
-                status = "Healthy"
-
             requests.post(
                 f"{REGISTRY_URL}/heartbeat",
-                json={"id": NODE_ID, "status": status},
+                json={
+                    "id": NODE_ID,
+                    "status": "Down" if is_failed else "Healthy"
+                },
                 timeout=2
             )
-
         except Exception as e:
-            print(f"[HEARTBEAT] Failed: {e}")
+            print(f"[{NODE_ID}] Heartbeat failed: {e}")
 
         time.sleep(5)
 
@@ -52,39 +44,49 @@ def startup_event():
     thread = threading.Thread(target=send_heartbeat, daemon=True)
     thread.start()
 
+# -------------------------
+# FAIL NODE
+# -------------------------
+@app.post("/fail")
+def fail_node():
+    global is_failed
+    is_failed = True
+    return {"status": "failed", "message": f"{NODE_ID} is now offline"}
+
+
+# -------------------------
+# RECOVER NODE
+# -------------------------
+@app.post("/recover")
+def recover_node():
+    global is_failed
+    is_failed = False
+    return {"status": "recovered", "message": f"{NODE_ID} is now healthy"}
 
 # -------------------------
 # FETCH FILE
 # -------------------------
 @app.get("/fetch")
 def fetch_file(file: str, x_request_id: str = Header(None)):
-    global is_failed, active_requests
 
     if is_failed:
         return {"status": "ERROR", "message": "Node is offline"}
 
-    with requests_lock:
-        if active_requests >= MAX_CONCURRENT:
-            print(f"[{x_request_id}] BUSY - overload")
-            return {"status": "BUSY", "message": "Too many concurrent requests"}
-        active_requests += 1
+    print(f"[{x_request_id}] [{NODE_ID}] Request for file: {file}")
+
+    # 1. Cache check
+    if file in cache:
+        print(f"[{x_request_id}] [{NODE_ID}] Cache HIT")
+        return {
+            "status": "HIT",
+            "file": file,
+            "data": cache[file]
+        }
+
+    # 2. Cache miss → fetch from origin
+    print(f"[{x_request_id}] [{NODE_ID}] Cache MISS → fetching from origin")
 
     try:
-        time.sleep(1)  # simulate load
-
-        print(f"[{x_request_id}] Request for file: {file}")
-
-        # Cache HIT
-        if file in cache:
-            print(f"[{x_request_id}] Cache HIT")
-            return {
-                "status": "HIT",
-                "file": file,
-                "data": cache[file]
-            }
-
-        print(f"[{x_request_id}] Cache MISS → fetching from origin")
-
         response = requests.get(
             f"{ORIGIN_URL}/get-file",
             params={"filename": file},
@@ -98,7 +100,10 @@ def fetch_file(file: str, x_request_id: str = Header(None)):
                 "code": response.status_code
             }
 
-        data = {"content": response.text}
+        data = {
+            "content": response.text
+        }
+
         cache[file] = data
 
         return {
@@ -108,28 +113,11 @@ def fetch_file(file: str, x_request_id: str = Header(None)):
         }
 
     except Exception as e:
-        print(f"[{x_request_id}] Exception: {e}")
+        print(f"[{x_request_id}] [{NODE_ID}] Exception: {e}")
         return {
             "status": "ERROR",
             "message": "Failed to fetch from origin"
         }
-
-    finally:
-        with requests_lock:
-            active_requests -= 1
-
-
-# -------------------------
-# HEALTH
-# -------------------------
-@app.get("/health")
-def health():
-    return {
-        "status": "healthy" if not is_failed else "down",
-        "active_requests": active_requests,
-        "max_concurrent": MAX_CONCURRENT
-    }
-
 
 # -------------------------
 # CACHE INVALIDATION
@@ -141,24 +129,16 @@ def delete_cache(file: str):
         return {"message": f"{file} removed from cache"}
     return {"message": "file not in cache"}
 
+# -------------------------
+# HEALTH
+# -------------------------
+@app.get("/health")
+def health():
+    return {"status": "healthy", "node": NODE_ID}
 
 # -------------------------
-# FAILURE SIMULATION
+# ROOT
 # -------------------------
-@app.post("/fail")
-def fail_node():
-    global is_failed
-    is_failed = True
-    return {"status": "failed"}
-
-
-@app.post("/recover")
-def recover_node():
-    global is_failed
-    is_failed = False
-    return {"status": "recovered"}
-
-
 @app.get("/")
 def root():
-    return {"message": "Edge Node C running"}
+    return {"message": f"{NODE_ID} running"}
