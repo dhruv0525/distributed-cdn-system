@@ -28,7 +28,7 @@ os.makedirs(FILES_DIR, exist_ok=True)
 METADATA_FILE = "files/metadata.json"
 
 # Purge service URL
-PURGE_SERVICE_URL = os.getenv("PURGE_SERVICE_URL", "http://purge-service:8000")
+PURGE_SERVICE_URL = "http://purge:8000"
 
 
 # ─────────────────────────────────────────
@@ -59,7 +59,7 @@ def notify_purge_service(filename: str, request_id: str = "N/A"):
     try:
         response = requests.post(
             f"{PURGE_SERVICE_URL}/purge",
-            json={"filename": filename},
+            json={"file": filename},
             timeout=3
         )
         if response.status_code == 200:

@@ -23,7 +23,7 @@ def fetch_file(file: str, x_request_id: str = Header(None)):
         return {
             "status": "HIT",
             "file": file,
-            "data": cache[file]
+            "data": cache[file].decode(errors="ignore")
         }
 
     # 2. Cache miss → fetch from origin
@@ -47,17 +47,15 @@ def fetch_file(file: str, x_request_id: str = Header(None)):
             }
 
         # ✅ FIX 2: Correct response handling
-        data = {
-            "content": response.text
-        }
+        data = response.content
 
         # Store in cache
         cache[file] = data
 
         return {
-            "status": "MISS",
-            "file": file,
-            "data": data
+        "status": "MISS",
+        "file": file,
+        "data": data.decode(errors="ignore")
         }
 
     except Exception as e:
