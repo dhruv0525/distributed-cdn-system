@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   traffic-manager:
@@ -25,6 +24,8 @@ services:
     build: ./services/origin-server
     ports:
       - "8004:8000"
+    volumes:
+      - ./services/origin-server/files:/app/files
 
   registry:
     build: ./services/service-registry
