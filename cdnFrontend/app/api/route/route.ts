@@ -39,19 +39,17 @@ export async function GET(request: NextRequest) {
   let latency: number;
 
   if (random > 0.85) {
-    // 15% chance of error
+    // 15% chance of simulated request failure
     status = 'ERROR';
     latency = 0;
-    return NextResponse.json(
-      {
-        request_id: `req-${Date.now()}`,
-        selected_node: selectedNode.id,
-        status,
-        latency,
-        content: null,
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      request_id: `req-${Date.now()}`,
+      selected_node: selectedNode.id,
+      status,
+      latency,
+      content: null,
+      error: 'Simulated cache failure',
+    });
   } else if (random > 0.7) {
     // 15% chance of busy
     status = 'BUSY';

@@ -1,20 +1,20 @@
 import { Node, TimelineStep } from './types';
 
-// ✅ Real backend endpoints
+// Use the local Next.js API routes during development and production.
+// The backend services are simulated in `app/api/*` and avoid cross-origin fetch issues.
 const API = {
-  ROUTE: "http://localhost:8000",
-  REGISTRY: "http://localhost:8005",
-  PURGE: "http://localhost:8006",
+  ROUTE: '/api/route',
+  REGISTRY: '/api/nodes',
+  PURGE: '/api/purge',
 };
 
 export interface FileRequestResponse {
   request_id: string;
   selected_node: string;
   status: 'HIT' | 'MISS' | 'BUSY' | 'ERROR';
-  data?: {
-    content?: string;
-    [key: string]: any;
-  };
+  latency?: number;
+  content?: string | null;
+  [key: string]: any;
 }
 
 // -----------------------------
@@ -26,7 +26,7 @@ export async function fetchFile(
 ): Promise<FileRequestResponse> {
   try {
     const response = await fetch(
-      `${API.ROUTE}/route?file=${encodeURIComponent(filename)}`,
+      `${API.ROUTE}?file=${encodeURIComponent(filename)}`,
       {
         headers: {
           'X-Client-Location': location,
@@ -34,13 +34,15 @@ export async function fetchFile(
       }
     );
 
-    if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
+    const payload = await response.json().catch(() => ({ status: 'ERROR' }));
+
+    if (!response.ok || payload?.status === 'ERROR') {
+      const message = payload?.error || response.statusText || 'Failed to fetch file';
+      throw new Error(`API error: ${message}`);
     }
 
-    return await response.json();
+    return payload;
   } catch (error) {
-    console.error('Error fetching file:', error);
     throw error;
   }
 }
@@ -50,7 +52,7 @@ export async function fetchFile(
 // -----------------------------
 export async function fetchNodes(): Promise<Node[]> {
   try {
-    const response = await fetch(`${API.REGISTRY}/nodes`);
+    const response = await fetch(API.REGISTRY);
 
     if (!response.ok) {
       throw new Error(`API error: ${response.statusText}`);
@@ -70,7 +72,7 @@ export async function purgeFile(
   filename: string
 ): Promise<{ message: string; results?: any[] }> {
   try {
-    const response = await fetch(`${API.PURGE}/purge`, {
+    const response = await fetch(API.PURGE, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
