@@ -294,10 +294,10 @@ MIT License
 
 # Author
 
-Dhruv Thakor
-Pooja Sharma
-Jaimin Koriya
-Tanvi Patange 
-Tanisha Mishra
+Dhruv Thakor,
+Pooja Sharma,
+Jaimin Koriya,
+Tanvi Patange, 
+Tanisha Mishra,
 Medha Kumar
 
